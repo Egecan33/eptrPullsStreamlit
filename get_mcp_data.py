@@ -1,88 +1,89 @@
-import json
-import argparse
+# app.py
+
+import streamlit as st
+from datetime import datetime
 import pandas as pd
 from eptr2 import EPTR2
-from datetime import datetime
 
+def fetch_mcp_data(input_date: str, username: str, password: str):
+    """
+    Fetch MCP data for the given date using EPTR2 credentials.
 
-def main(input_date: str):
-    # Load credentials from JSON file
+    Args:
+        input_date (str): Date in YYYY-MM-DD format.
+        username (str): EPTR2 username.
+        password (str): EPTR2 password.
+
+    Returns:
+        pd.DataFrame or None: DataFrame containing MCP data or None if failed.
+    """
     try:
-        with open("eptr_credentials.json", "r") as f:
-            creds = json.load(f)
-    except FileNotFoundError:
-        print(
-            "Error: eptr_credentials.json file not found. Please ensure it exists in the current directory."
-        )
-        return
-    except json.JSONDecodeError as e:
-        print(f"Error decoding eptr_credentials.json: {e}")
-        return
-
-    username = creds.get("EPTR_USERNAME")
-    password = creds.get("EPTR_PASSWORD")
-
-    if not username or not password:
-        print("Error: Username or password not found in eptr_credentials.json.")
-        return
-
-    # Create EPTR2 object using username and password
-    try:
+        # Create EPTR2 object using username and password
         eptr = EPTR2(username=username, password=password)
     except Exception as e:
-        print(f"Error creating EPTR2 object: {e}")
-        return
+        st.error(f"Failed to create EPTR2 object: {e}")
+        return None
 
     # Fetch data (Market Clearing Price) for the given date
-    # Using the same date for start and end to get that single day's data
     try:
         result = eptr.call(
-            "mcp", start_date=input_date, end_date=input_date, postprocess=True
+            "mcp",
+            start_date=input_date,
+            end_date=input_date,
+            postprocess=True
         )
-        print("Data fetched successfully.")
+        st.success("Data fetched successfully.")
     except Exception as e:
-        print(f"Error while fetching data: {e}")
-        return
+        st.error(f"Error while fetching data: {e}")
+        return None
 
-    # Debugging: Print the type of result
-    print(f"Type of result: {type(result)}")
-
-    # Convert result to a DataFrame and display
+    # Process the result
     if isinstance(result, pd.DataFrame):
         df = result
         if not df.empty:
-            print(f"DataFrame created with shape: {df.shape}")
-            print(df.head())  # Display first few rows
-
-            # If you'd like to save to CSV, uncomment the lines below
-            timestamp = datetime.now().strftime("%Y%m%d_%H%M%S")
-            csv_path = f"./PTF_{timestamp}.csv"
-            try:
-                df.to_csv(csv_path, index=False)
-                print(f"Data saved to CSV file: {csv_path}")
-            except Exception as e:
-                print(f"Error saving data to CSV: {e}")
+            st.write(f"**DataFrame Shape:** {df.shape}")
+            st.dataframe(df)
+            return df
         else:
-            print("The DataFrame is empty. No data to display or save.")
+            st.warning("The DataFrame is empty. No data to display.")
+            return None
     elif isinstance(result, list) and len(result) > 0:
         df = pd.DataFrame(result)
-        print(f"DataFrame created with shape: {df.shape}")
-        print(df.head())  # Display first few rows
-
-        # If you'd like to save to CSV, uncomment the lines below
-        timestamp = datetime.now().strftime("%Y%m%d_%H%M%S")
-        csv_path = f"./PTF_{timestamp}.csv"
-        try:
-            df.to_csv(csv_path, index=False)
-            print(f"Data saved to CSV file: {csv_path}")
-        except Exception as e:
-            print(f"Error saving data to CSV: {e}")
+        st.write(f"**DataFrame Shape:** {df.shape}")
+        st.dataframe(df)
+        return df
     else:
-        print("No data returned or result is not a valid list or DataFrame.")
+        st.warning("No data returned or result is not a valid list or DataFrame.")
+        return None
 
+def main():
+    st.title("EPİAŞ Market Clearing Price (PTF) Data Fetcher")
+
+    st.markdown("""
+    This application fetches Market Clearing Price (PTF) data from EPİAŞ for a specified date.
+    """)
+
+    # Date input
+    input_date = st.date_input("Select Date", datetime.today())
+    input_date_str = input_date.strftime("%Y-%m-%d")
+
+    # Button to fetch data
+    if st.button("Fetch Data"):
+        # Retrieve credentials from Streamlit secrets
+        try:
+            username = st.secrets["eptr_credentials"]["EPTR_USERNAME"]
+            password = st.secrets["eptr_credentials"]["EPTR_PASSWORD"]
+        except KeyError:
+            st.error("EPTR2 credentials not found in Streamlit secrets.")
+            return
+
+        # Fetch data
+        df = fetch_mcp_data(input_date_str, username, password)
+
+        # Optionally, you can display additional information or visualizations here
+        # For example:
+        # if df is not None:
+        #     st.line_chart(df['price_column'])  # Replace 'price_column' with actual column name
 
 if __name__ == "__main__":
-    parser = argparse.ArgumentParser(description="Fetch MCP data for a given date.")
-    parser.add_argument("--date", required=True, help="Date in YYYY-MM-DD format")
-    args = parser.parse_args()
-    main(args.date)
+    main()
